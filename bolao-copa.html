@@ -164,46 +164,57 @@ label{font-size:11px;color:var(--t2);display:block;margin-bottom:5px;font-weight
 const SUPA_URL = 'https://sxgoxnepaseueqkckind.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4Z294bmVwYXNldWVxa2NraW5kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwMDM5MTQsImV4cCI6MjA5MzU3OTkxNH0.JMSHCUhzTeR3QH4fNupqZwxYGyLjnjz_AYgILDUs0U4';
 
-const headers = {
+const baseHeaders = {
   'apikey': SUPA_KEY,
   'Authorization': 'Bearer ' + SUPA_KEY,
-  'Content-Type': 'application/json',
-  'Prefer': 'return=representation'
+  'Content-Type': 'application/json'
 };
 
 async function dbGet(table, query = '') {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${query}`, { headers });
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${query}`, {
+    headers: baseHeaders
+  });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
 async function dbInsert(table, data) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
-    method: 'POST', headers,
+    method: 'POST',
+    headers: { ...baseHeaders, 'Prefer': 'return=representation' },
     body: JSON.stringify(data)
   });
   if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const result = await r.json();
+  // Supabase returns array on insert
+  return Array.isArray(result) ? result : [result];
 }
+
 async function dbUpdate(table, data, query) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${query}`, {
-    method: 'PATCH', headers,
+    method: 'PATCH',
+    headers: { ...baseHeaders, 'Prefer': 'return=representation' },
     body: JSON.stringify(data)
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
+
 async function dbUpsert(table, data) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
     method: 'POST',
-    headers: { ...headers, 'Prefer': 'return=representation,resolution=merge-duplicates' },
+    headers: { ...baseHeaders, 'Prefer': 'return=representation,resolution=merge-duplicates' },
     body: JSON.stringify(data)
   });
   if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const result = await r.json();
+  return Array.isArray(result) ? result : [result];
 }
+
 async function dbDelete(table, query) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${query}`, {
-    method: 'DELETE', headers
+    method: 'DELETE',
+    headers: baseHeaders
   });
   if (!r.ok) throw new Error(await r.text());
 }
@@ -668,13 +679,15 @@ async function doRegister() {
   const pwHash = btoa(unescape(encodeURIComponent(pw)));
 
   try {
-    const [u] = await dbInsert('users', { name, nick, pw: pwHash, is_admin: isFirst });
+    const result = await dbInsert('users', { name, nick: nick || null, pw: pwHash, is_admin: isFirst });
+    const u = result[0];
+    if (!u || !u.id) throw new Error('Resposta inválida do servidor');
     allUsers.push(u);
     currentUser = u;
     localStorage.setItem('bolao_uid', u.id);
     toast(isFirst ? 'Conta criada! Você é o administrador 🎉' : 'Bem-vindo ao Bolão! 🎉');
     render();
-  } catch(e) { toast('Erro ao criar conta','err'); console.error(e); }
+  } catch(e) { console.error(e); toast('Erro ao criar conta: ' + e.message, 'err'); }
 }
 
 // ─── PROFILES ─────────────────────────────────────────────
