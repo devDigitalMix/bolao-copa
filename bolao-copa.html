@@ -338,18 +338,35 @@ function renderJogos(el){
 }
 
 function sn(name){
-  // short name: last meaningful word
   const p=name.trim().split(' ');
   return p[p.length-1];
 }
 
+// Retorna true se ainda está dentro do prazo para palpitar
+// (antes do horário do jogo, no fuso do browser do usuário)
+function gameOpen(g){
+  if(g.finished) return false;
+  if(!g.date) return true; // sem data = sempre aberto
+  const timeStr=g.time||'00:00';
+  // monta string ISO-like sem timezone para tratar como horário local
+  const gameDate=new Date(`${g.date}T${timeStr}:00`);
+  return Date.now() < gameDate.getTime();
+}
+
 function buildCard(g,bet,res){
   const fin=g.finished;
-  // current selected type for this game
+  const open=gameOpen(g); // false = prazo encerrado (mesmo sem resultado ainda)
   const selType=window._sel[g.id]||(bet?bet.type:null);
 
+  let statusBadge='';
+  if(fin) statusBadge=''; // placar real já aparece
+  else if(open) statusBadge=`<span class="badge bg-g">Aberto</span>`;
+  else statusBadge=`<span class="badge bg-r">Encerrado</span>`;
+
   let betSection='';
+
   if(fin){
+    // jogo encerrado: mostra resultado do palpite
     const rc=res.color==='gold'?'var(--gold)':res.color==='green'?'var(--g)':res.color==='blue'?'var(--b)':'var(--t3)';
     betSection=`<div class="bet-section">
       ${bet?`<div class="bet-res">
@@ -358,8 +375,9 @@ function buildCard(g,bet,res){
         <div style="width:100%"><span class="badge ${res.color==='gold'?'bg-gold':res.color==='blue'?'bg-b':res.color==='green'?'bg-g':'bg-gray'}">${res.label}</span></div>
       </div>`:`<div class="txs txt3" style="padding:6px 0">Você não fez palpite neste jogo.</div>`}
     </div>`;
-  } else {
-    // type buttons — 6 types in 3 cols × 2 rows
+
+  } else if(open){
+    // prazo aberto: mostra formulário de palpite
     const types=[
       {key:'winner_a',ic:'🏆',top:sn(g.team_a),bot:'vence',pts:2},
       {key:'draw',    ic:'🤝',top:'Empate',    bot:'',    pts:2},
@@ -374,18 +392,33 @@ function buildCard(g,bet,res){
         <span style="font-size:10px;line-height:1.3">${t.top}${t.bot?'<br>'+t.bot:''}</span>
         <span class="bt-pts">${t.pts}pts</span>
       </button>`).join('');
-
     betSection=`<div class="bet-section">
       <div class="bet-lbl">Escolha um palpite</div>
       <div class="bet-types">${btns}</div>
       <div id="bi-${g.id}">${buildInput(g,bet,selType)}</div>
+    </div>`;
+
+  } else {
+    // prazo encerrado mas jogo ainda não tem resultado
+    betSection=`<div class="bet-section">
+      ${bet
+        ? `<div class="bet-res" style="background:rgba(30,45,69,.6)">
+            <div class="bet-res-desc">Palpite: <strong>${betDesc(bet,g)}</strong></div>
+            <span class="badge bg-gray">Aguardando resultado</span>
+          </div>`
+        : `<div style="display:flex;align-items:center;gap:7px;padding:8px 0">
+            <span style="font-size:16px">🔒</span>
+            <span class="tsm txt3">Prazo encerrado — sem palpite registrado.</span>
+          </div>`}
     </div>`;
   }
 
   return `<div class="jcard" id="jc-${g.id}">
     <div class="jcard-teams">
       <div class="team-name">${g.team_a}</div>
-      ${fin?`<div class="real-score">${g.gol_a}<span style="color:var(--t3);margin:0 3px">×</span>${g.gol_b}</div>`:`<div style="padding:0 8px"><span class="badge bg-g">Aberto</span></div>`}
+      ${fin
+        ? `<div class="real-score">${g.gol_a}<span style="color:var(--t3);margin:0 3px">×</span>${g.gol_b}</div>`
+        : `<div style="padding:0 8px">${statusBadge}</div>`}
       <div class="team-name right">${g.team_b}</div>
     </div>
     <div class="jinfo">${fmtDate(g.date)}${g.time?' às '+g.time:''} · ${g.phase}</div>
@@ -465,6 +498,7 @@ async function saveBet(gid){
   if(!type){toast('Selecione um tipo de palpite!','err');return;}
   const game=allGames.find(g=>g.id===gid);
   if(!game||game.finished){toast('Este jogo já foi encerrado.','err');return;}
+  if(!gameOpen(game)){toast('Prazo encerrado! Não é mais possível palpitar.','err');return;}
 
   let val_a=null,val_b=null;
   if(type==='goals_a'){
