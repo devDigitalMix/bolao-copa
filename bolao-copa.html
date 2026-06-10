@@ -185,8 +185,8 @@ async function dbDelete(t,q){
 const COLORS=['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#6366f1'];
 let currentUser=null,currentPage='ranking';
 let allUsers=[],allGames=[],allBets=[];
-// _sel: stores in-memory selected bet type per game before saving
-window._sel={};
+// _sel removed — no longer needed (score-only betting)
+
 
 function ini(n){return n.split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);}
 function colorFor(uid){const i=allUsers.findIndex(u=>u.id===uid);return COLORS[i>=0?i%COLORS.length:0];}
@@ -194,28 +194,44 @@ function betsFor(uid){return allBets.filter(b=>b.user_id===uid);}
 function betFor(uid,gid){return allBets.find(b=>b.user_id===uid&&b.game_id===gid)||null;}
 
 // ═══════════════════════════ SCORING ═══════════════════════════
-// Palpites disponíveis (escolha 1 por jogo):
-//   winner_a → Time A ganha       → 2pts
-//   winner_b → Time B ganha       → 2pts
-//   draw     → Empate             → 2pts
-//   goals_a  → Gols do Time A     → 1pt  (val_a = número)
-//   goals_b  → Gols do Time B     → 1pt  (val_b = número)
-//   exact    → Placar exato A×B   → 5pts (val_a, val_b)
-// Nunca acumulam. Cada palpite é independente e exclusivo.
+// O palpite é sempre um placar: val_a × val_b
+// Regras de pontuação (não acumulam com placar exato):
+//   Placar exato (val_a===gA && val_b===gB)          → 5pts (só isso)
+//   Vencedor + gols dos dois (≠ exato impossível aqui → já coberto acima)
+//   Vencedor + gols de um time                        → 2+1 = 3pts
+//   Vencedor correto (sem acertar gols)               → 2pts
+//   Empate certo (qualquer placar empate)             → 2pts
+//   Gols de apenas um time correto                    → 1pt
+//   Errou tudo                                        → 0pts
 
 function calcScore(bet,game){
-  if(!game.finished||game.gol_a===null) return{total:0,label:'',color:''};
-  const gA=game.gol_a,gB=game.gol_b;
-  const res=gA>gB?'A':gA<gB?'B':'E';
-  switch(bet.type){
-    case 'winner_a': return res==='A'?{total:2,label:'Vencedor certo ✓',color:'green'}:{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray'};
-    case 'winner_b': return res==='B'?{total:2,label:'Vencedor certo ✓',color:'green'}:{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray'};
-    case 'draw':     return res==='E'?{total:2,label:'Empate certo ✓',color:'green'}:{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray'};
-    case 'goals_a':  return bet.val_a===gA?{total:1,label:`${gA} gol${gA!==1?'s':''} ✓`,color:'blue'}:{total:0,label:`Errou (foram ${gA})`,color:'gray'};
-    case 'goals_b':  return bet.val_b===gB?{total:1,label:`${gB} gol${gB!==1?'s':''} ✓`,color:'blue'}:{total:0,label:`Errou (foram ${gB})`,color:'gray'};
-    case 'exact':    return(bet.val_a===gA&&bet.val_b===gB)?{total:5,label:'Placar exato ✓',color:'gold'}:{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray'};
-    default: return{total:0,label:'',color:''};
+  if(!game.finished||game.gol_a===null||bet.val_a===null||bet.val_b===null)
+    return{total:0,label:'',color:'',breakdown:[]};
+  const gA=game.gol_a, gB=game.gol_b;
+  const bA=bet.val_a,  bB=bet.val_b;
+
+  // Placar exato → 5pts, nada mais
+  if(bA===gA && bB===gB)
+    return{total:5,label:'🎯 Placar exato!',color:'gold',breakdown:['Placar exato']};
+
+  const realDraw=(gA===gB), betDraw=(bA===bB);
+  const realWinner=gA>gB?'A':gA<gB?'B':null;
+  const betWinner =bA>bB?'A':bA<bB?'B':null;
+  const hitResult=(realDraw&&betDraw)||(realWinner&&realWinner===betWinner);
+  const hitA=(bA===gA), hitB=(bB===gB);
+
+  let pts=0; const parts=[];
+
+  if(hitResult){
+    pts+=2;
+    parts.push(realDraw?'Empate certo':'Vencedor certo');
   }
+  if(hitA){ pts+=1; parts.push(`Gols ${game.team_a} certo`); }
+  if(hitB){ pts+=1; parts.push(`Gols ${game.team_b} certo`); }
+
+  if(pts===0) return{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray',breakdown:[]};
+  const icon=pts>=3?'✅':pts===2?'👍':'⚡';
+  return{total:pts,label:`${icon} ${parts.join(' + ')}`,color:pts>=4?'gold':pts>=2?'green':'blue',breakdown:parts};
 }
 
 function userScore(uid){
@@ -225,28 +241,19 @@ function userScore(uid){
     if(!b) return;
     const r=calcScore(b,g);
     total+=r.total;
-    if(r.total>0){
-      if(b.type==='exact') exact++;
-      else if(b.type==='draw') draw++;
-      else if(b.type.startsWith('winner')) winner++;
-      else goals++;
+    if(r.total===5) exact++;
+    else if(r.breakdown){
+      if(r.breakdown.some(x=>x.includes('Vencedor'))) winner++;
+      if(r.breakdown.some(x=>x.includes('Empate'))) draw++;
+      if(r.breakdown.some(x=>x.includes('Gols'))) goals++;
     }
   });
   return{total,exact,winner,draw,goals};
 }
 
 function betDesc(bet,game){
-  if(!bet) return '—';
-  const nA=game.team_a,nB=game.team_b;
-  switch(bet.type){
-    case 'winner_a': return `${nA} vence`;
-    case 'winner_b': return `${nB} vence`;
-    case 'draw':     return 'Empate';
-    case 'goals_a':  return `${nA}: ${bet.val_a} gol${bet.val_a!==1?'s':''}`;
-    case 'goals_b':  return `${nB}: ${bet.val_b} gol${bet.val_b!==1?'s':''}`;
-    case 'exact':    return `Placar ${bet.val_a}×${bet.val_b}`;
-    default: return '—';
-  }
+  if(!bet||bet.val_a===null||bet.val_b===null) return '—';
+  return `Palpite: ${bet.val_a}×${bet.val_b}`;
 }
 
 // ═══════════════════════════ RENDER ═══════════════════════════
@@ -337,12 +344,8 @@ function renderJogos(el){
   el.innerHTML=html;
 }
 
-function sn(name){
-  const p=name.trim().split(' ');
-  return p[p.length-1];
-}
 
-// Retorna true se ainda está dentro do prazo para palpitar
+
 // (antes do horário do jogo, no fuso do browser do usuário)
 function gameOpen(g){
   if(g.finished) return false;
@@ -356,7 +359,6 @@ function gameOpen(g){
 function buildCard(g,bet,res){
   const fin=g.finished;
   const open=gameOpen(g); // false = prazo encerrado (mesmo sem resultado ainda)
-  const selType=window._sel[g.id]||(bet?bet.type:null);
 
   let statusBadge='';
   if(fin) statusBadge=''; // placar real já aparece
@@ -370,32 +372,32 @@ function buildCard(g,bet,res){
     const rc=res.color==='gold'?'var(--gold)':res.color==='green'?'var(--g)':res.color==='blue'?'var(--b)':'var(--t3)';
     betSection=`<div class="bet-section">
       ${bet?`<div class="bet-res">
-        <div class="bet-res-desc">Palpite: <strong>${betDesc(bet,g)}</strong></div>
+        <div class="bet-res-desc"><strong>${betDesc(bet,g)}</strong></div>
         <div class="bet-res-pts" style="color:${rc}">${res.total}pts</div>
         <div style="width:100%"><span class="badge ${res.color==='gold'?'bg-gold':res.color==='blue'?'bg-b':res.color==='green'?'bg-g':'bg-gray'}">${res.label}</span></div>
       </div>`:`<div class="txs txt3" style="padding:6px 0">Você não fez palpite neste jogo.</div>`}
     </div>`;
 
   } else if(open){
-    // prazo aberto: mostra formulário de palpite
-    const types=[
-      {key:'winner_a',ic:'🏆',top:sn(g.team_a),bot:'vence',pts:2},
-      {key:'draw',    ic:'🤝',top:'Empate',    bot:'',    pts:2},
-      {key:'winner_b',ic:'🏆',top:sn(g.team_b),bot:'vence',pts:2},
-      {key:'goals_a', ic:'⚽',top:'Gols',      bot:sn(g.team_a),pts:1},
-      {key:'exact',   ic:'🎯',top:'Placar',    bot:'exato',pts:5},
-      {key:'goals_b', ic:'⚽',top:'Gols',      bot:sn(g.team_b),pts:1},
-    ];
-    const btns=types.map(t=>`
-      <button class="bt-btn ${selType===t.key?'sel':''}" onclick="selectType('${g.id}','${t.key}')">
-        <span class="bt-ic">${t.ic}</span>
-        <span style="font-size:10px;line-height:1.3">${t.top}${t.bot?'<br>'+t.bot:''}</span>
-        <span class="bt-pts">${t.pts}pts</span>
-      </button>`).join('');
+    // prazo aberto: mostra inputs de placar
+    const vA=bet?bet.val_a:'', vB=bet?bet.val_b:'';
+    const saved=(bet&&bet.val_a!==null&&bet.val_b!==null);
+    const savedBadge=saved?`<span class="badge bg-g">✓ Salvo</span>`:'';
     betSection=`<div class="bet-section">
-      <div class="bet-lbl">Escolha um palpite</div>
-      <div class="bet-types">${btns}</div>
-      <div id="bi-${g.id}">${buildInput(g,bet,selType)}</div>
+      <div class="bet-lbl">Qual será o placar?</div>
+      <div class="bet-input" style="align-items:center;gap:6px">
+        <span class="tsm txt3" style="font-size:11px;max-width:80px;line-height:1.3;text-align:right">${g.team_a}</span>
+        <input type="number" min="0" max="20" id="bva-${g.id}" value="${vA}" placeholder="0"
+          style="width:58px;text-align:center;padding:8px 4px;font-size:22px;font-family:var(--fh);font-weight:800"
+          onkeydown="if(event.key==='Enter')saveBet('${g.id}')"/>
+        <span class="tsm" style="font-size:22px;font-weight:800;color:var(--t3)">×</span>
+        <input type="number" min="0" max="20" id="bvb-${g.id}" value="${vB}" placeholder="0"
+          style="width:58px;text-align:center;padding:8px 4px;font-size:22px;font-family:var(--fh);font-weight:800"
+          onkeydown="if(event.key==='Enter')saveBet('${g.id}')"/>
+        <span class="tsm txt3" style="font-size:11px;max-width:80px;line-height:1.3">${g.team_b}</span>
+        <button class="btn btn-g btn-xs" onclick="saveBet('${g.id}')">Salvar</button>
+        ${savedBadge}
+      </div>
     </div>`;
 
   } else {
@@ -426,105 +428,36 @@ function buildCard(g,bet,res){
   </div>`;
 }
 
-function buildInput(g,bet,type){
-  if(!type) return '';
-  const saved=bet&&bet.type===type;
-  const savedBadge=saved?`<span class="badge bg-g">✓ Salvo</span>`:'';
 
-  if(type==='winner_a'||type==='winner_b'||type==='draw'){
-    const desc=type==='winner_a'?`${g.team_a} vence`:type==='winner_b'?`${g.team_b} vence`:'Empate';
-    return `<div class="bet-input">
-      <span class="tsm txt2">Palpite: <strong style="color:var(--t1)">${desc}</strong></span>
-      <button class="btn btn-g btn-xs" onclick="saveBet('${g.id}')">Confirmar</button>
-      ${savedBadge}
-    </div>`;
-  }
-  if(type==='goals_a'){
-    const v=saved?bet.val_a:'';
-    return `<div class="bet-input">
-      <span class="tsm txt2">${g.team_a} fará</span>
-      <input type="number" min="0" max="20" id="bv-${g.id}" value="${v}" placeholder="0" style="width:62px;text-align:center;padding:7px 4px;font-size:19px;font-family:var(--fh);font-weight:800"/>
-      <span class="tsm txt2">gol(s)</span>
-      <button class="btn btn-g btn-xs" onclick="saveBet('${g.id}')">Salvar</button>
-      ${savedBadge}
-    </div>`;
-  }
-  if(type==='goals_b'){
-    const v=saved?bet.val_b:'';
-    return `<div class="bet-input">
-      <span class="tsm txt2">${g.team_b} fará</span>
-      <input type="number" min="0" max="20" id="bv-${g.id}" value="${v}" placeholder="0" style="width:62px;text-align:center;padding:7px 4px;font-size:19px;font-family:var(--fh);font-weight:800"/>
-      <span class="tsm txt2">gol(s)</span>
-      <button class="btn btn-g btn-xs" onclick="saveBet('${g.id}')">Salvar</button>
-      ${savedBadge}
-    </div>`;
-  }
-  if(type==='exact'){
-    const vA=saved?bet.val_a:'', vB=saved?bet.val_b:'';
-    return `<div class="bet-input">
-      <input type="number" min="0" max="20" id="bva-${g.id}" value="${vA}" placeholder="0" style="width:56px;text-align:center;padding:7px 4px;font-size:19px;font-family:var(--fh);font-weight:800"/>
-      <span class="tsm txt3" style="font-weight:800">×</span>
-      <input type="number" min="0" max="20" id="bvb-${g.id}" value="${vB}" placeholder="0" style="width:56px;text-align:center;padding:7px 4px;font-size:19px;font-family:var(--fh);font-weight:800"/>
-      <button class="btn btn-g btn-xs" onclick="saveBet('${g.id}')">Salvar</button>
-      ${savedBadge}
-    </div>`;
-  }
-  return '';
-}
 
-function selectType(gid,type){
-  window._sel[gid]=type;
-  const game=allGames.find(g=>g.id===gid);
-  const bet=betFor(currentUser.id,gid);
 
-  // update button styles without full re-render
-  const card=document.getElementById('jc-'+gid);
-  if(card){
-    card.querySelectorAll('.bt-btn').forEach(b=>b.classList.remove('sel'));
-    // find the clicked button by matching data via type order
-    const allBtns=card.querySelectorAll('.bt-btn');
-    const typeOrder=['winner_a','draw','winner_b','goals_a','exact','goals_b'];
-    const idx=typeOrder.indexOf(type);
-    if(allBtns[idx]) allBtns[idx].classList.add('sel');
-  }
 
-  const inputArea=document.getElementById('bi-'+gid);
-  if(inputArea) inputArea.innerHTML=buildInput(game,bet&&bet.type===type?bet:null,type);
-}
+
 
 async function saveBet(gid){
   const uid=currentUser.id;
-  const type=window._sel[gid]||(betFor(uid,gid)?.type);
-  if(!type){toast('Selecione um tipo de palpite!','err');return;}
   const game=allGames.find(g=>g.id===gid);
   if(!game||game.finished){toast('Este jogo já foi encerrado.','err');return;}
   if(!gameOpen(game)){toast('Prazo encerrado! Não é mais possível palpitar.','err');return;}
 
-  let val_a=null,val_b=null;
-  if(type==='goals_a'){
-    const v=document.getElementById('bv-'+gid)?.value;
-    if(v===''||v===null||v===undefined){toast('Informe o número de gols!','err');return;}
-    val_a=parseInt(v);
-  } else if(type==='goals_b'){
-    const v=document.getElementById('bv-'+gid)?.value;
-    if(v===''||v===null||v===undefined){toast('Informe o número de gols!','err');return;}
-    val_b=parseInt(v);
-  } else if(type==='exact'){
-    const va=document.getElementById('bva-'+gid)?.value;
-    const vb=document.getElementById('bvb-'+gid)?.value;
-    if(va===''||vb===''||va==null||vb==null){toast('Informe o placar completo!','err');return;}
-    val_a=parseInt(va);val_b=parseInt(vb);
-  }
+  const va=document.getElementById('bva-'+gid)?.value;
+  const vb=document.getElementById('bvb-'+gid)?.value;
+  if(va===''||va==null||vb===''||vb==null){toast('Informe o placar completo!','err');return;}
+  const val_a=parseInt(va), val_b=parseInt(vb);
+  if(isNaN(val_a)||isNaN(val_b)){toast('Placar inválido!','err');return;}
 
   try{
-    await dbUpsert('bets',{user_id:uid,game_id:gid,type,val_a,val_b});
-    const nb={user_id:uid,game_id:gid,type,val_a,val_b};
+    await dbUpsert('bets',{user_id:uid,game_id:gid,type:'score',val_a,val_b});
+    const nb={user_id:uid,game_id:gid,type:'score',val_a,val_b};
     const idx=allBets.findIndex(b=>b.user_id===uid&&b.game_id===gid);
     if(idx>=0) allBets[idx]=nb; else allBets.push(nb);
     toast('Palpite salvo! ✅');
-    // refresh just the input area to show saved badge
-    const inputArea=document.getElementById('bi-'+gid);
-    if(inputArea) inputArea.innerHTML=buildInput(game,nb,type);
+    // show saved badge inline
+    const savedEl=document.querySelector(`#jc-${gid} .bet-section .badge`);
+    if(!savedEl){
+      const btn=document.querySelector(`#jc-${gid} .bet-section .btn-g`);
+      if(btn){const sp=document.createElement('span');sp.className='badge bg-g';sp.textContent='✓ Salvo';btn.after(sp);}
+    }
   } catch(e){console.error(e);toast('Erro ao salvar: '+e.message,'err');}
 }
 
@@ -752,14 +685,9 @@ function toast(msg,type=''){
 function fmtDate(d){if(!d) return '';const[y,m,day]=d.split('-');return `${day}/${m}/${y}`;}
 
 // ═══════════════════════════ BOOT ════════════════════════
-// IMPORTANTE: a tabela bets precisa das colunas:
+// A tabela bets precisa das colunas:
 //   user_id uuid, game_id uuid, type text, val_a int, val_b int
-// Se você usou o schema antigo (com pa/pb), rode no SQL Editor:
-//   ALTER TABLE bets DROP COLUMN IF EXISTS pa;
-//   ALTER TABLE bets DROP COLUMN IF EXISTS pb;
-//   ALTER TABLE bets ADD COLUMN IF NOT EXISTS type text;
-//   ALTER TABLE bets ADD COLUMN IF NOT EXISTS val_a int;
-//   ALTER TABLE bets ADD COLUMN IF NOT EXISTS val_b int;
+// (type agora sempre será 'score'; val_a e val_b guardam o placar palpitado)
 
 async function boot(){
   document.getElementById('root').innerHTML=`<div class="loader"><div class="spin"></div><span>Carregando bolão...</span></div>`;
