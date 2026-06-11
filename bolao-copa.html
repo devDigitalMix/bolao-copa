@@ -627,23 +627,56 @@ function openMyProfile(){viewProfile(currentUser.id,true);}
 function viewProfile(uid,isOwn=false){
   const u=allUsers.find(x=>x.id===uid);if(!u) return;
   const r=userScore(uid),color=colorFor(uid);
+  const canSeeBets=isOwn||currentUser?.is_admin;
+
   let bHtml='';
-  if(allGames.length===0){bHtml=`<div class="empty" style="padding:16px">Nenhum jogo cadastrado.</div>`;}
-  else{
-    allGames.forEach(g=>{
-      const b=betFor(uid,g.id);
-      const res=b?calcScore(b,g):{total:0,label:'',color:''};
-      const rc=res.color==='gold'?'var(--gold)':res.color==='green'?'var(--g)':res.color==='blue'?'var(--b)':'var(--t3)';
-      bHtml+=`<div style="padding:9px 0;border-bottom:1px solid var(--bdr)">
-        <div class="flex aic jb">
-          <div class="tsm txt3">${g.team_a} × ${g.team_b}</div>
-          ${g.finished?`<span style="font-family:var(--fh);font-weight:700;color:${rc};flex-shrink:0;margin-left:8px">${res.total}p</span>`:`<span class="badge bg-g" style="flex-shrink:0">Aberto</span>`}
-        </div>
-        <div class="txs mt2" style="color:var(--t2)">${b?betDesc(b,g):'<em style="color:var(--t3)">Sem palpite</em>'}</div>
-        ${g.finished&&b&&res.label?`<div class="txs mt2" style="color:${rc}">${res.label}</div>`:''}
-      </div>`;
-    });
+  if(canSeeBets){
+    if(allGames.length===0){bHtml=`<div class="empty" style="padding:16px">Nenhum jogo cadastrado.</div>`;}
+    else{
+      allGames.forEach(g=>{
+        const b=betFor(uid,g.id);
+        const res=b?calcScore(b,g):{total:0,label:'',color:''};
+        const rc=res.color==='gold'?'var(--gold)':res.color==='green'?'var(--g)':res.color==='blue'?'var(--b)':'var(--t3)';
+        bHtml+=`<div style="padding:9px 0;border-bottom:1px solid var(--bdr)">
+          <div class="flex aic jb">
+            <div class="tsm txt3">${g.team_a} × ${g.team_b}</div>
+            ${g.finished?`<span style="font-family:var(--fh);font-weight:700;color:${rc};flex-shrink:0;margin-left:8px">${res.total}p</span>`:`<span class="badge bg-g" style="flex-shrink:0">Aberto</span>`}
+          </div>
+          <div class="txs mt2" style="color:var(--t2)">${b?betDesc(b,g):'<em style="color:var(--t3)">Sem palpite</em>'}</div>
+          ${g.finished&&b&&res.label?`<div class="txs mt2" style="color:${rc}">${res.label}</div>`:''}
+        </div>`;
+      });
+    }
+  } else {
+    // jogos encerrados: mostra apenas pontuação por jogo, sem revelar palpite
+    const finished=allGames.filter(g=>g.finished);
+    const pending=allGames.filter(g=>!g.finished);
+    if(finished.length===0&&pending.length===0){
+      bHtml=`<div class="empty" style="padding:16px">Nenhum jogo cadastrado.</div>`;
+    } else {
+      if(finished.length>0){
+        finished.forEach(g=>{
+          const b=betFor(uid,g.id);
+          const res=b?calcScore(b,g):{total:0,label:'',color:''};
+          const rc=res.color==='gold'?'var(--gold)':res.color==='green'?'var(--g)':res.color==='blue'?'var(--b)':'var(--t3)';
+          bHtml+=`<div style="padding:9px 0;border-bottom:1px solid var(--bdr)">
+            <div class="flex aic jb">
+              <div class="tsm txt3">${g.team_a} × ${g.team_b} <span style="color:var(--t3)">(${g.gol_a}×${g.gol_b})</span></div>
+              ${b?`<span style="font-family:var(--fh);font-weight:700;color:${rc};flex-shrink:0;margin-left:8px">${res.total}p</span>`:`<span class="txs txt3">—</span>`}
+            </div>
+            ${b&&res.label?`<div class="txs mt2" style="color:${rc}">${res.label}</div>`:`<div class="txs mt2" style="color:var(--t3)"><em>Sem palpite</em></div>`}
+          </div>`;
+        });
+      }
+      if(pending.length>0){
+        bHtml+=`<div style="padding:10px 0 4px"><span class="badge bg-gray">${pending.length} jogo${pending.length!==1?'s':''} com palpites em aberto</span></div>`;
+      }
+    }
   }
+
+  const betsLabel=canSeeBets?'Palpites':'Desempenho por jogo';
+  const betsNote=canSeeBets?'':`<div class="txs txt3" style="margin-bottom:8px">🔒 Os palpites são visíveis apenas para o próprio jogador.</div>`;
+
   showModal(`
     <div class="flex aic gap3 mb3">
       <div class="avatar" style="width:50px;height:50px;font-size:18px;background:${color}20;color:${color}">${ini(u.name)}</div>
@@ -662,7 +695,8 @@ function viewProfile(uid,isOwn=false){
       <div class="stat"><div class="n" style="color:var(--g)">${r.draw}</div><div class="l">Empates</div></div>
       <div class="stat"><div class="n" style="color:var(--b)">${r.goals}</div><div class="l">Gols</div></div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Palpites</div>
+    <div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${betsLabel}</div>
+    ${betsNote}
     <div style="max-height:300px;overflow-y:auto">${bHtml}</div>
     <div class="flex gap2 mt3">
       <button class="btn btn-gh f1" onclick="closeModal()">Fechar</button>
