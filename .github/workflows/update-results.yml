@@ -1,0 +1,27 @@
+name: Atualizar resultados do Bolão
+
+on:
+  schedule:
+    # Roda no minuto 0 de toda hora. Horário em UTC (Brasília = UTC-3).
+    # Para rodar com mais frequência nos dias de jogo, troque por: '*/30 * * * *' (a cada 30 min)
+    - cron: '0 * * * *'
+  workflow_dispatch:        # permite rodar manualmente pelo botão "Run workflow"
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rodar atualizador
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+        run: node update-results.js
