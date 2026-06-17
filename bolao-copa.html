@@ -185,8 +185,8 @@ async function dbDelete(t,q){
 const COLORS=['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#6366f1'];
 let currentUser=null,currentPage='ranking';
 let allUsers=[],allGames=[],allBets=[];
-let fdApiKey=localStorage.getItem('fd_api_key')||'';
-// _sel removed — no longer needed (score-only betting)
+// Resultados agora são atualizados automaticamente por um robô (GitHub Actions).
+// O admin ainda pode digitar/corrigir o placar manualmente abaixo, se precisar.
 
 
 function ini(n){return n.split(' ').map(x=>x[0]).join('').toUpperCase().slice(0,2);}
@@ -498,7 +498,6 @@ function renderAdmin(el){
         <input type="number" min="0" max="20" id="ra_${g.id}" value="${g.gol_a!==null?g.gol_a:''}" placeholder="—" style="width:50px;text-align:center;padding:7px 4px"/>
         <span style="color:var(--t3);font-weight:700">×</span>
         <input type="number" min="0" max="20" id="rb_${g.id}" value="${g.gol_b!==null?g.gol_b:''}" placeholder="—" style="width:50px;text-align:center;padding:7px 4px"/>
-        <button class="btn btn-gh btn-xs" onclick="fetchGameResult('${g.id}')" title="Buscar resultado automaticamente">🔄 Buscar</button>
         <button class="btn btn-gold btn-xs" onclick="finishGame('${g.id}')">✅ Encerrar</button>
         ${g.finished?`<button class="btn btn-gh btn-xs" onclick="reopenGame('${g.id}')">↩ Reabrir</button>`:''}
       </div>
@@ -507,15 +506,8 @@ function renderAdmin(el){
   el.innerHTML=`
     <div class="section-hd">⚙️ Admin</div>
     <div class="card" style="margin-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:10px">🔄 Busca Automática de Resultados</div>
-      <div class="fg" style="margin-bottom:8px">
-        <label>API Key — football-data.org</label>
-        <div style="display:flex;gap:8px">
-          <input id="fd-key" type="password" value="${fdApiKey}" placeholder="Cole sua chave aqui..." style="flex:1"/>
-          <button class="btn btn-gh btn-sm" onclick="saveFdKey()" style="white-space:nowrap">Salvar</button>
-        </div>
-      </div>
-      <div class="txs txt3">Chave gratuita em <a href="https://www.football-data.org/client/register" target="_blank" style="color:var(--g);text-decoration:none">football-data.org</a> · Plano Free cobre a Copa do Mundo.</div>
+      <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:6px">🤖 Resultados automáticos</div>
+      <div class="txs txt3">Os placares são atualizados sozinhos pouco depois de cada jogo terminar (robô no GitHub Actions). Você só precisa cadastrar os jogos abaixo com os nomes corretos dos times. Se algum não atualizar, dá pra digitar o placar na mão e clicar em ✅ Encerrar.</div>
     </div>
     <div class="card">
       <div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:13px">➕ Novo Jogo</div>
@@ -564,77 +556,6 @@ async function reopenGame(id){
     g.gol_a=null;g.gol_b=null;g.finished=false;
     toast('Jogo reaberto.');renderPage();
   } catch(e){toast('Erro: '+e.message,'err');}
-}
-
-// ─── AUTO RESULTADO ───────────────────────────────────────
-function saveFdKey(){
-  fdApiKey=document.getElementById('fd-key').value.trim();
-  localStorage.setItem('fd_api_key',fdApiKey);
-  toast('Chave salva! ✅');
-}
-
-let _fdMatches=[];
-
-async function fetchGameResult(gid){
-  if(!fdApiKey){toast('Configure a API Key primeiro! (campo acima)','err');return;}
-  const game=allGames.find(g=>g.id===gid);
-  if(!game||!game.date){toast('Jogo sem data cadastrada!','err');return;}
-  const btn=document.querySelector('.btn[onclick*="fetchGameResult"]');
-  if(btn){btn.disabled=true;btn.textContent='⏳';}
-  try{
-    let matches=[];
-    const r1=await fetch(
-      `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${game.date}&dateTo=${game.date}`,
-      {headers:{'X-Auth-Token':fdApiKey}}
-    );
-    if(r1.ok){const d=await r1.json();matches=d.matches||[];}
-    if(!matches.length){
-      const r2=await fetch(
-        `https://api.football-data.org/v4/matches?dateFrom=${game.date}&dateTo=${game.date}`,
-        {headers:{'X-Auth-Token':fdApiKey}}
-      );
-      if(!r2.ok) throw new Error('Erro '+r2.status+' — verifique sua API key');
-      const d=await r2.json();matches=d.matches||[];
-    }
-    const done=matches.filter(m=>['FINISHED','FULL_TIME'].includes(m.status));
-    if(!done.length){toast('Nenhum resultado disponível para '+fmtDate(game.date),'err');return;}
-    _fdMatches=done;
-    let html='<div class="modal-title">🔄 Selecionar resultado</div>'
-      +'<p class="tsm txt3 mb3">'+done.length+' jogo(s) encerrado(s) em '+fmtDate(game.date)+'.'
-      +'<br>Clique no que corresponde a <strong style="color:var(--t1)">'+game.team_a+' × '+game.team_b+'</strong>:</p>';
-    done.forEach(function(m,idx){
-      var s=m.score.fullTime;
-      var ha=(s.home!=null)?s.home:'?';
-      var hb=(s.away!=null)?s.away:'?';
-      html+='<div class="jcard" style="cursor:pointer;margin-bottom:8px;transition:.15s" onclick="_pickResult('+idx+',\''+gid+'\')">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
-        +'<span class="tsm bold" style="flex:1">'+m.homeTeam.name+'</span>'
-        +'<span style="font-family:var(--fh);font-size:22px;font-weight:800;padding:0 10px;color:var(--gold)">'+ha+' × '+hb+'</span>'
-        +'<span class="tsm bold" style="flex:1;text-align:right">'+m.awayTeam.name+'</span>'
-        +'</div>'
-        +(m.competition?'<div class="txs txt3" style="text-align:center;margin-top:4px">'+m.competition.name+'</div>':'')
-        +'</div>';
-    });
-    html+='<button class="btn btn-gh w-full mt3" onclick="closeModal()">Cancelar</button>';
-    showModal(html);
-  } catch(e){
-    toast('Erro: '+e.message,'err');
-  } finally{
-    if(btn){btn.disabled=false;btn.textContent='🔄 Buscar';}
-  }
-}
-
-function _pickResult(idx,gid){
-  closeModal();
-  var m=_fdMatches[idx];
-  var s=m.score.fullTime;
-  var golA=(s.home!=null)?s.home:0;
-  var golB=(s.away!=null)?s.away:0;
-  var ra=document.getElementById('ra_'+gid);
-  var rb=document.getElementById('rb_'+gid);
-  if(ra) ra.value=golA;
-  if(rb) rb.value=golB;
-  toast('Placar preenchido: '+golA+'×'+golB+' — clique ✅ Encerrar para confirmar');
 }
 
 
