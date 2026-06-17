@@ -45,7 +45,13 @@ const ALIASES = {
   'escocia': 'scotland', 'pais de gales': 'wales', 'gales': 'wales',
   'nova zelandia': 'new zealand', 'costa rica': 'costa rica', 'panama': 'panama',
   'jamaica': 'jamaica', 'honduras': 'honduras', 'cabo verde': 'cape verde',
-  'africa do sul': 'south africa', 'uzbequistao': 'uzbekistan', 'jordania': 'jordan'
+  'africa do sul': 'south africa', 'uzbequistao': 'uzbekistan', 'jordania': 'jordan',
+  // times novos da Copa 2026
+  'rd congo': 'dr congo', 'republica democratica do congo': 'dr congo', 'rdc': 'dr congo',
+  'tchequia': 'czechia', 'republica tcheca': 'czechia', 'czech republic': 'czechia',
+  'bosnia e herzegovina': 'bosnia and herzegovina', 'bosnia herzegovina': 'bosnia and herzegovina',
+  'iraque': 'iraq',
+  'haiti': 'haiti'
 };
 
 // remove acentos, bandeirinhas/emojis e pontuação; deixa só letras minúsculas e espaços
@@ -107,6 +113,7 @@ async function main() {
     const home = m.homeTeam?.name, away = m.awayTeam?.name;
     const s = m.score?.fullTime;
     if (home == null || away == null || s?.home == null || s?.away == null) continue;
+    console.log(`  [API] ${home} ${s.home} × ${s.away} ${away}  (canon: ${canon(home)} | ${canon(away)})`);
     apiByPair.set(pairKey(home, away), { home: canon(home), away: canon(away), hs: s.home, as: s.away });
   }
 
