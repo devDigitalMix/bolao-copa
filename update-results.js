@@ -32,7 +32,7 @@ const ALIASES = {
   'uruguai': 'uruguay', 'colombia': 'colombia', 'mexico': 'mexico',
   'estados unidos': 'united states', 'eua': 'united states', 'usa': 'united states',
   'canada': 'canada', 'japao': 'japan', 'coreia do sul': 'korea republic',
-  'korea republic': 'korea republic', 'republic of korea': 'korea republic',
+  'korea republic': 'south korea', 'republic of korea': 'south korea',
   'marrocos': 'morocco', 'senegal': 'senegal', 'gana': 'ghana',
   'nigeria': 'nigeria', 'camaroes': 'cameroon', 'costa do marfim': 'ivory coast',
   'cote divoire': 'ivory coast', 'suica': 'switzerland', 'dinamarca': 'denmark',

@@ -185,6 +185,7 @@ async function dbDelete(t,q){
 const COLORS=['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#6366f1'];
 let currentUser=null,currentPage='ranking';
 let allUsers=[],allGames=[],allBets=[];
+let _scrollOnNav=false;
 // Resultados agora são atualizados automaticamente por um robô (GitHub Actions).
 // O admin ainda pode digitar/corrigir o placar manualmente abaixo, se precisar.
 
@@ -280,7 +281,7 @@ function render(){
   renderPage();
 }
 
-function goPage(p){currentPage=p;render();}
+function goPage(p){currentPage=p;_scrollOnNav=true;render();}
 function renderPage(){
   const el=document.getElementById('page-content');
   if(!el) return;
@@ -343,6 +344,7 @@ function renderJogos(el){
     });
   });
   el.innerHTML=html;
+  if(_scrollOnNav){_scrollOnNav=false;scrollToCurrentGame('jc-');}
 }
 
 
@@ -484,7 +486,7 @@ function renderEquipe(el){
 function renderAdmin(el){
   let gHtml='';
   allGames.forEach(g=>{
-    gHtml+=`<div class="jcard">
+    gHtml+=`<div class="jcard" id="adm-jc-${g.id}">
       <div class="flex aic jb mb2">
         <div class="tsm bold">${g.team_a} × ${g.team_b}</div>
         <div class="flex gap2 aic">
@@ -528,6 +530,7 @@ function renderAdmin(el){
       <div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Jogos (${allGames.length})</div>
       ${gHtml||`<div class="empty" style="padding:24px"><div class="empty-ic">⚽</div><p>Nenhum jogo ainda.</p></div>`}
     </div>`;
+  if(_scrollOnNav){_scrollOnNav=false;scrollToCurrentGame('adm-jc-');}
 }
 
 async function addGame(){
@@ -724,6 +727,27 @@ function toast(msg,type=''){
   clearTimeout(tT);tT=setTimeout(()=>t.classList.remove('show'),2800);
 }
 function fmtDate(d){if(!d) return '';const[y,m,day]=d.split('-');return `${day}/${m}/${y}`;}
+
+// ─── AUTO-SCROLL ─────────────────────────────────────────
+function scrollToCurrentGame(prefix){
+  // Scroll to first open game (right after last finished) so the action zone is visible.
+  // If all games are finished, scroll to the last one.
+  const open=allGames.filter(g=>!g.finished);
+  const finished=allGames.filter(g=>g.finished);
+  let targetId;
+  if(open.length>0&&finished.length>0){
+    // Land on first open game so last finished is just above
+    targetId=prefix+open[0].id;
+  } else if(finished.length>0){
+    // All done — scroll to last finished
+    targetId=prefix+finished[finished.length-1].id;
+  }
+  if(!targetId) return;
+  setTimeout(()=>{
+    const el=document.getElementById(targetId);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  },50);
+}
 
 // ═══════════════════════════ BOOT ════════════════════════
 // A tabela bets precisa das colunas:
