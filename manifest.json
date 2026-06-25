@@ -1,0 +1,19 @@
+{
+  "name": "Bolão da Copa",
+  "short_name": "Bolão",
+  "description": "Plataforma interna de palpites da Copa",
+  "start_url": "./bolao-copa.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a0f1a",
+  "theme_color": "#16a34a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
