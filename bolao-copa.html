@@ -190,6 +190,7 @@ async function dbDelete(t,q){
 
 // ═══════════════════════════ STATE ═══════════════════════════
 const COLORS=['#16a34a','#d97706','#2563eb','#dc2626','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#6366f1'];
+const KNOCKOUT_PHASES=['Dezesseis avos','Oitavas','Quartas','Semifinal','Final'];
 let currentUser=null,currentPage='ranking';
 let allUsers=[],allGames=[],allBets=[];
 let _scrollOnNav=false;
@@ -218,10 +219,12 @@ function calcScore(bet,game){
     return{total:0,label:'',color:'',breakdown:[]};
   const gA=game.gol_a, gB=game.gol_b;
   const bA=bet.val_a,  bB=bet.val_b;
+  const mult=KNOCKOUT_PHASES.includes(game.phase)?2:1;
+  const multLabel=mult>1?' (×2)':'';
 
-  // Placar exato → 5pts, nada mais
+  // Placar exato → 5pts base, nada mais
   if(bA===gA && bB===gB)
-    return{total:5,label:'🎯 Placar exato!',color:'gold',breakdown:['Placar exato']};
+    return{total:5*mult,label:`🎯 Placar exato!${multLabel}`,color:'gold',breakdown:['Placar exato']};
 
   const realDraw=(gA===gB), betDraw=(bA===bB);
   const realWinner=gA>gB?'A':gA<gB?'B':null;
@@ -239,8 +242,9 @@ function calcScore(bet,game){
   if(hitB){ pts+=1; parts.push(`Gols ${game.team_b} certo`); }
 
   if(pts===0) return{total:0,label:`Errou (foi ${gA}×${gB})`,color:'gray',breakdown:[]};
+  const total=pts*mult;
   const icon=pts>=3?'✅':pts===2?'👍':'⚡';
-  return{total:pts,label:`${icon} ${parts.join(' + ')}`,color:pts>=4?'gold':pts>=2?'green':'blue',breakdown:parts};
+  return{total,label:`${icon} ${parts.join(' + ')}${multLabel}`,color:total>=4?'gold':total>=2?'green':'blue',breakdown:parts};
 }
 
 function userScore(uid){
@@ -315,6 +319,7 @@ function renderRanking(el){
       <div class="rule"><strong style="color:var(--g)">2</strong>Vencedor</div>
       <div class="rule"><strong style="color:var(--g)">2</strong>Empate</div>
       <div class="rule"><strong style="color:var(--b)">1</strong>Gols de um time</div>
+      <div class="rule"><strong style="color:var(--gold)">×2</strong>Mata-mata</div>
     </div>
     ${ranked.length===0?`<div class="empty"><div class="empty-ic">👥</div><p>Nenhum participante ainda.</p></div>`:''}
     ${ranked.map((u,i)=>{
@@ -529,7 +534,7 @@ function renderAdmin(el){
         <div class="fg"><label>Hora</label><input type="time" id="nhr" value="15:00"/></div>
       </div>
       <div class="fg"><label>Fase</label>
-        <select id="nfs"><option>Grupos</option><option>Oitavas</option><option>Quartas</option><option>Semifinal</option><option>Final</option></select>
+        <select id="nfs"><option>Grupos</option><option>Dezesseis avos</option><option>Oitavas</option><option>Quartas</option><option>Semifinal</option><option>Final</option></select>
       </div>
       <button class="btn btn-g w-full" onclick="addGame()">Adicionar jogo</button>
     </div>
