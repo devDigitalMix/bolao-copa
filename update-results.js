@@ -111,7 +111,21 @@ async function main() {
   const apiByPair = new Map();
   for (const m of matches) {
     const home = m.homeTeam?.name, away = m.awayTeam?.name;
-    const s = m.score?.fullTime;
+    const duration = m.score?.duration; // REGULAR | EXTRA_TIME | PENALTY_SHOOTOUT
+
+    // Se foi para pênaltis, usar o placar antes dos pênaltis (empate na prorrogação).
+    // A API pode retornar os gols de pênalti em fullTime; priorizamos extraTime/regularTime.
+    let s;
+    if (duration === 'PENALTY_SHOOTOUT') {
+      const et = m.score?.extraTime;
+      const rt = m.score?.regularTime;
+      const ft = m.score?.fullTime;
+      s = (et?.home != null) ? et : (rt?.home != null) ? rt : ft;
+      console.log(`  [PENS] ${home} vs ${away} → duration=PENALTY_SHOOTOUT | extraTime=${JSON.stringify(et)} | regularTime=${JSON.stringify(rt)} | fullTime=${JSON.stringify(ft)} → usando ${JSON.stringify(s)}`);
+    } else {
+      s = m.score?.fullTime;
+    }
+
     if (home == null || away == null || s?.home == null || s?.away == null) continue;
     console.log(`  [API] ${home} ${s.home} × ${s.away} ${away}  (canon: ${canon(home)} | ${canon(away)})`);
     apiByPair.set(pairKey(home, away), { home: canon(home), away: canon(away), hs: s.home, as: s.away });
