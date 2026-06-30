@@ -1,4 +1,4 @@
-const CACHE = 'bolao-copa-v1';
+const CACHE = 'bolao-copa-v2';
 
 // Assets to cache on install (shell + fonts)
 const PRECACHE = [
